@@ -13,26 +13,15 @@
 #define JSON_STRING_SIZE 200
 #define NULL ((void *)0)
 
-uint8 crc_Check = 0;
 uint8 getCount = 0;
-uint8 usart2_rx_over = 0;
-u16 sensor_time = 0;
-uint8 Flag = 0, lenth = 0;
 uint8 Send_485[Send_485_len];
-struct _Relay Relay;
 
-u8 type = 1;
-uint8 length = 0;
-uint8 Rx_i = 0;
-uint16 crcData;	
-volatile int json_ready = 0;
-
-unsigned char xdata json_buffer[JSON_STRING_SIZE];
-int json_index = 0;
-int bracket_count = 0; 
-unsigned char json_complete = 0;
-unsigned char complet_flag = 0;
-int brace_count = 0;
+uint8 xdata json_buffer[JSON_STRING_SIZE];
+uint16 json_index = 0;
+uint16 bracket_count = 0; 
+volatile uint8 json_complete = 0;
+volatile uint8 json_ready = 0;
+uint16 brace_count = 0;
 
 typedef struct {
     int net;
@@ -59,16 +48,17 @@ void flash_read_data(unsigned char* char_data, unsigned int length);
 void flash_write_data_con(ConfigParams* source_data);
 void flash_read_data_con(ConfigParams* target_data);
 
-u8 Modbus_485_uart2_TX(void);
-u8 Modbus_485_package(u8 *buf, u8 slave_addr, u8 function_code, u8 start_H_addr, u8 start_L_addr, u8 number_H_addr, u8 number_L_addr);
+uint8 Modbus_485_uart2_TX(void);
+uint8 Modbus_485_package(u8 *buf, u8 slave_addr, u8 function_code, u8 start_H_addr, u8 start_L_addr, u8 number_H_addr, u8 number_L_addr);
+
 int my_strtol(const char *nptr, char **endptr, int base);
 char *mystrtok_r(char *str, const char *delim, char **saveptr);
 
+struct _Relay Relay;
 static void __Relay_1(unsigned char Flag);
 static void __Relay_2(unsigned char Flag);
 static void __Relay_3(unsigned char Flag);
 static void __Relay_4(unsigned char Flag);
-
 typedef void (*__cbRelayFun)(unsigned char);
 static __cbRelayFun const _cbRelayFun[4] = {
     __Relay_1,
@@ -76,8 +66,38 @@ static __cbRelayFun const _cbRelayFun[4] = {
     __Relay_3,
     __Relay_4,
 };
-
 void Single_Relay(u8 ch, u8 sw);
+
+char putchar(char ch);
+void IAP_Disable() ;
+uint8 Byte_Read(unsigned int add);
+void Byte_Program(unsigned int add,unsigned char ch);
+void Sector_Erase(unsigned int add);
+
+void main() {
+    rece2Count = 0;
+    receCount = 0;
+    port_init();
+    Timer0_Init();
+    uart1_init();
+    uart2_init();
+    RS485E = 0;
+    flash_read();
+    
+    // Ensure a delay after initialization
+    Delay_ms(100);
+
+    while (1) {
+			
+        if (json_ready && json_complete) {
+					
+            json_ready = 0;
+            configure_string_parsing(json_buffer);
+            memset(json_buffer, 0, JSON_STRING_SIZE);
+        }
+    }
+}
+
 char putchar(char ch)
 {
     SBUF = ch;
@@ -95,7 +115,6 @@ void IAP_Disable()
     IAP_ADDRL = 0;      
 }
   
-
 unsigned char Byte_Read(unsigned int add)
 {
     IAP_DATA = 0x00;             
@@ -147,28 +166,6 @@ void Sector_Erase(unsigned int add)
     _nop_();
     EA = 1;
     IAP_Disable();     
-}
-
-void main() {
-    rece2Count = 0;
-    receCount = 0;
-    port_init();
-    Timer0_Init();
-    uart1_init();
-    uart2_init();
-    RS485E = 0;
-    flash_read();
-    
-    // Ensure a delay after initialization
-    Delay_ms(100);
-
-    while (1) {
-        if (json_ready && json_complete) {
-            json_ready = 0;
-            configure_string_parsing(json_buffer);
-            memset(json_buffer, 0, JSON_STRING_SIZE);
-        }
-    }
 }
 
 void configure_string_parsing(char *json_string) {
@@ -226,7 +223,7 @@ void configure_string_parsing(char *json_string) {
     }
 }
 
-void Uart_Isr() interrupt 4 using 1 {
+void Uart_Isr() interrupt 4 {
     if (RI) {
         RI = 0;
         received_char = SBUF;
@@ -240,7 +237,7 @@ void Uart_Isr() interrupt 4 using 1 {
                     json_buffer[json_index] = '\0';
                     json_complete = 1;
                     json_ready = 1;
-                    json_index = 0;
+                    json_index = 0;								 
                 }
             }
         } else {
